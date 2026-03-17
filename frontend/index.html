@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>秒杀系统</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <header class="header">
+    <div class="container">
+      <h1 class="logo">⚡ 秒杀系统</h1>
+      <nav>
+        <a href="#products">商品</a>
+        <a href="#" id="loginBtn">登录</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- 登录/注册面板 -->
+    <section id="auth" class="card auth-card">
+      <h2>用户登录</h2>
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('login')">登录</button>
+        <button class="tab" onclick="switchTab('register')">注册</button>
+      </div>
+
+      <!-- 登录表单 -->
+      <div id="loginForm">
+        <input type="text" id="loginUsername" placeholder="用户名" />
+        <input type="password" id="loginPassword" placeholder="密码" />
+        <button class="btn-primary" onclick="login()">登 录</button>
+      </div>
+
+      <!-- 注册表单 -->
+      <div id="registerForm" style="display:none">
+        <input type="text" id="regUsername" placeholder="用户名（4-20位）" />
+        <input type="password" id="regPassword" placeholder="密码（6-20位）" />
+        <input type="email" id="regEmail" placeholder="邮箱（选填）" />
+        <button class="btn-primary" onclick="register()">注 册</button>
+      </div>
+
+      <p id="authMsg" class="msg"></p>
+    </section>
+
+    <!-- 商品列表 -->
+    <section id="products">
+      <h2 class="section-title">热卖商品</h2>
+      <div id="productGrid" class="product-grid">
+        <!-- 静态示例商品（实际应从 /api/product/list 加载） -->
+        <div class="product-card">
+          <div class="product-img">📱</div>
+          <h3>iPhone 16 Pro</h3>
+          <p class="price">¥ 9,999</p>
+          <p class="stock">库存：<span id="stock-1">加载中...</span></p>
+          <button class="btn-seckill" onclick="getProduct(1)">查看详情</button>
+        </div>
+        <div class="product-card">
+          <div class="product-img">💻</div>
+          <h3>MacBook Pro M4</h3>
+          <p class="price">¥ 14,999</p>
+          <p class="stock">库存：<span id="stock-2">加载中...</span></p>
+          <button class="btn-seckill" onclick="getProduct(2)">查看详情</button>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🎮</div>
+          <h3>PS5 Pro</h3>
+          <p class="price">¥ 4,299</p>
+          <p class="stock">库存：<span id="stock-3">加载中...</span></p>
+          <button class="btn-seckill" onclick="getProduct(3)">查看详情</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 商品详情弹窗 -->
+    <div id="modal" class="modal" style="display:none">
+      <div class="modal-box">
+        <button class="close" onclick="closeModal()">✕</button>
+        <div id="modalContent"></div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    <p>武汉大学 · 分布式系统课程作业 · 2026</p>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

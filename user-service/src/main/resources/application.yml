@@ -1,0 +1,52 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 3000ms
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.seckill.user.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# JWT 配置（替代原 UUID Token）
+jwt:
+  secret: seckill-system-jwt-secret-key-2026-must-be-long-enough
+  expire: 7200000  # 毫秒，2小时
+
+# Actuator 健康检查
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+instance:
+  id: ${INSTANCE_ID:user-service-local}
+
+logging:
+  level:
+    com.seckill.user: debug
+
+# JWT 配置（密钥需 >= 64 字节，即 512 bits）
+jwt:
+  secret: seckill-system-jwt-secret-key-wuhan-university-2026-distributed
+  expire: 7200000   # 2小时（毫秒）

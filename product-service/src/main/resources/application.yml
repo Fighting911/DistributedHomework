@@ -1,0 +1,36 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: product-service
+  datasource:
+    url: jdbc:mysql://localhost:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 3000ms
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.seckill.product.entity
+  configuration:
+    map-underscore-to-camel-case: true
+
+# 缓存配置
+cache:
+  product:
+    ttl: 3600        # 基础TTL（秒），实际TTL会加随机偏移防雪崩
+    null-ttl: 60     # 空值缓存TTL（防穿透）
+    lock-ttl: 10     # 分布式锁TTL（防击穿）
+
+instance:
+  id: ${INSTANCE_ID:product-service-local}
+
+logging:
+  level:
+    com.seckill.product: debug
