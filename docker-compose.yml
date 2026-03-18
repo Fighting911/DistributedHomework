@@ -127,27 +127,6 @@ services:
     networks:
       - seckill-net
 
-  # ── 库存服务（含秒杀 + Redisson）─────────────────
-  inventory-service:
-    build: ./inventory-service
-    container_name: inventory-service
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: 123456
-      SPRING_DATA_REDIS_HOST: redis
-      SERVER_PORT: 8084
-      INSTANCE_ID: inventory-service
-    ports:
-      - "8084:8084"
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - seckill-net
-
   # ── Nginx（负载均衡 + 动静分离）──────────────────
   nginx:
     build:
@@ -161,7 +140,6 @@ services:
       - user-service-2
       - product-service-1
       - product-service-2
-      - inventory-service
     networks:
       - seckill-net
 
