@@ -70,3 +70,38 @@ INSERT IGNORE INTO t_inventory (product_id, stock, locked_stock, version) VALUES
 (1, 100, 0, 0),
 (2, 50,  0, 0),
 (3, 200, 0, 0);
+
+-- 主从复制用户（在主库上创建）
+CREATE USER IF NOT EXISTS 'repl'@'%' IDENTIFIED WITH mysql_native_password BY 'repl123';
+GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%';
+FLUSH PRIVILEGES;
+
+-- 本地消息表（order-service 用于事务一致性）
+CREATE TABLE IF NOT EXISTS t_outbox_message (
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    topic       VARCHAR(100) NOT NULL COMMENT 'Kafka topic',
+    payload     TEXT         NOT NULL COMMENT 'JSON 消息体',
+    status      TINYINT      NOT NULL DEFAULT 0 COMMENT '0待发送 1已发送 2失败',
+    retry_count INT          NOT NULL DEFAULT 0,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sent_at     DATETIME     DEFAULT NULL,
+    PRIMARY KEY (id),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='本地消息表（防消息丢失）';
+
+-- 秒杀去重表（防重复下单）
+CREATE TABLE IF NOT EXISTS t_seckill_record (
+    id         BIGINT  NOT NULL AUTO_INCREMENT,
+    user_id    BIGINT  NOT NULL,
+    product_id BIGINT  NOT NULL,
+    order_no   VARCHAR(32) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_product (user_id, product_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='秒杀记录表（幂等防重）';
+
+-- ShardingSphere 分表：按订单ID mod 4 分表
+CREATE TABLE IF NOT EXISTS t_order_0 LIKE t_order;
+CREATE TABLE IF NOT EXISTS t_order_1 LIKE t_order;
+CREATE TABLE IF NOT EXISTS t_order_2 LIKE t_order;
+CREATE TABLE IF NOT EXISTS t_order_3 LIKE t_order;

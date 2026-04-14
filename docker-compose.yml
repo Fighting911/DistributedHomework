@@ -1,32 +1,67 @@
 version: '3.8'
 
-# 启动: docker-compose up -d --build
-# 停止: docker-compose down
-
 services:
 
-  # ── 数据库 ─────────────────────────────────────────
-  mysql:
+  # ── MySQL 主库 ─────────────────────────────────────────
+  mysql-master:
     image: mysql:8.0
-    container_name: seckill-mysql
+    container_name: seckill-mysql-master
     environment:
       MYSQL_ROOT_PASSWORD: 123456
       MYSQL_DATABASE: seckill
     ports:
-      - "3307:3306"    # 宿主机 3307，避免与本地 MySQL 冲突
+      - "3307:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_master_data:/var/lib/mysql
       - ./user-service/src/main/resources/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./mysql/master/my.cnf:/etc/mysql/conf.d/my.cnf
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p123456"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
     networks:
       - seckill-net
 
-  # ── 缓存 ──────────────────────────────────────────
+  # ── MySQL 从库 ─────────────────────────────────────────
+  mysql-slave:
+    image: mysql:8.0
+    container_name: seckill-mysql-slave
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_slave_data:/var/lib/mysql
+      - ./mysql/slave/my.cnf:/etc/mysql/conf.d/my.cnf
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p123456"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - seckill-net
+
+  # ── 从库初始化（一次性容器）──────────────────────────
+  mysql-slave-init:
+    image: mysql:8.0
+    container_name: seckill-slave-init
+    volumes:
+      - ./mysql/slave/init-slave.sh:/init-slave.sh
+    command: bash /init-slave.sh
+    depends_on:
+      mysql-slave:
+        condition: service_healthy
+    networks:
+      - seckill-net
+    restart: "no"
+
+  # ── Redis ─────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: seckill-redis
@@ -43,12 +78,65 @@ services:
     networks:
       - seckill-net
 
+  # ── Zookeeper ────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: seckill-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - seckill-net
+
+  # ── Kafka ─────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: seckill-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    depends_on:
+      - zookeeper
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks:
+      - seckill-net
+
+  # ── Elasticsearch ────────────────────────────────────
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: seckill-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks:
+      - seckill-net
+
   # ── 用户服务 实例1 ─────────────────────────────────
   user-service-1:
     build: ./user-service
     container_name: user-service-1
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_MASTER_URL: jdbc:mysql://mysql-master:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_SLAVE_URL: jdbc:mysql://mysql-slave:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: 123456
       SPRING_DATA_REDIS_HOST: redis
@@ -57,7 +145,7 @@ services:
     ports:
       - "8081:8081"
     depends_on:
-      mysql:
+      mysql-master:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -69,7 +157,8 @@ services:
     build: ./user-service
     container_name: user-service-2
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_MASTER_URL: jdbc:mysql://mysql-master:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_SLAVE_URL: jdbc:mysql://mysql-slave:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: 123456
       SPRING_DATA_REDIS_HOST: redis
@@ -78,7 +167,7 @@ services:
     ports:
       - "8082:8081"
     depends_on:
-      mysql:
+      mysql-master:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -90,18 +179,22 @@ services:
     build: ./product-service
     container_name: product-service-1
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_MASTER_URL: jdbc:mysql://mysql-master:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_SLAVE_URL: jdbc:mysql://mysql-slave:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: 123456
       SPRING_DATA_REDIS_HOST: redis
+      ELASTICSEARCH_URIS: http://elasticsearch:9200
       SERVER_PORT: 8082
       INSTANCE_ID: product-service-1
     ports:
       - "8083:8082"
     depends_on:
-      mysql:
+      mysql-master:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      elasticsearch:
         condition: service_healthy
     networks:
       - seckill-net
@@ -111,23 +204,75 @@ services:
     build: ./product-service
     container_name: product-service-2
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_MASTER_URL: jdbc:mysql://mysql-master:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_SLAVE_URL: jdbc:mysql://mysql-slave:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: 123456
       SPRING_DATA_REDIS_HOST: redis
+      ELASTICSEARCH_URIS: http://elasticsearch:9200
       SERVER_PORT: 8082
       INSTANCE_ID: product-service-2
     ports:
       - "8086:8082"
     depends_on:
-      mysql:
+      mysql-master:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      elasticsearch:
         condition: service_healthy
     networks:
       - seckill-net
 
-  # ── Nginx（负载均衡 + 动静分离）──────────────────
+  # ── 库存服务 ─────────────────────────────────────
+  inventory-service:
+    build: ./inventory-service
+    container_name: seckill-inventory
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-master:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SERVER_PORT: 8084
+      INSTANCE_ID: inventory-service
+    ports:
+      - "8084:8084"
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - seckill-net
+
+  # ── 订单服务 ─────────────────────────────────────
+  order-service:
+    build: ./order-service
+    container_name: seckill-order
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-master:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SERVER_PORT: 8085
+      INSTANCE_ID: order-service
+    ports:
+      - "8085:8085"
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - seckill-net
+
+  # ── Nginx ────────────────────────────────────────────
   nginx:
     build:
       context: .
@@ -140,6 +285,8 @@ services:
       - user-service-2
       - product-service-1
       - product-service-2
+      - inventory-service
+      - order-service
     networks:
       - seckill-net
 
@@ -148,5 +295,7 @@ networks:
     driver: bridge
 
 volumes:
-  mysql_data:
+  mysql_master_data:
+  mysql_slave_data:
   redis_data:
+  es_data:
