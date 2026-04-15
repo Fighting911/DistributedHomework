@@ -20,7 +20,7 @@ public class ProductController {
     private String instanceId;
 
     /**
-     * 商品详情（Redis缓存，处理三大缓存问题）
+     * 商品详情（Redis缓存，处理三大缓存问题，读走slave）
      * GET /api/product/{id}
      */
     @GetMapping("/{id}")
@@ -37,7 +37,7 @@ public class ProductController {
     }
 
     /**
-     * 商品列表
+     * 商品列表（读走slave）
      * GET /api/product/list
      */
     @GetMapping("/list")
@@ -46,7 +46,20 @@ public class ProductController {
     }
 
     /**
-     * 健康检查 + 实例标识（JMeter压测时验证负载均衡用）
+     * 商品全文搜索（Elasticsearch）
+     * GET /api/product/search?keyword=手机
+     */
+    @GetMapping("/search")
+    public Result<?> searchProducts(@RequestParam String keyword) {
+        try {
+            return Result.success(productService.searchProducts(keyword));
+        } catch (Exception e) {
+            return Result.error(500, "搜索失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 健康检查 + 实例标识
      * GET /api/product/ping
      */
     @GetMapping("/ping")
