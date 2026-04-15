@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seckill.order.mapper.OrderMapper">
+
+    <insert id="insertOrder" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO t_order (order_no, user_id, product_id, quantity, total_price, status)
+        VALUES (#{orderNo}, #{userId}, #{productId}, #{quantity}, #{totalPrice}, #{status})
+    </insert>
+
+    <select id="selectByOrderNo" resultType="com.seckill.order.entity.Order">
+        SELECT * FROM t_order WHERE order_no = #{orderNo}
+    </select>
+
+    <select id="selectByUserId" resultType="com.seckill.order.entity.Order">
+        SELECT * FROM t_order WHERE user_id = #{userId} ORDER BY created_at DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE t_order SET status = #{status} WHERE order_no = #{orderNo}
+    </update>
+
+    <insert id="insertOutbox" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO t_outbox_message (topic, payload, status)
+        VALUES (#{topic}, #{payload}, 0)
+    </insert>
+
+    <select id="selectPendingOutbox" resultType="com.seckill.order.entity.OutboxMessage">
+        SELECT * FROM t_outbox_message
+        WHERE status = 0 AND retry_count &lt; 5
+        ORDER BY created_at
+        LIMIT 20
+    </select>
+
+    <update id="markOutboxSent">
+        UPDATE t_outbox_message
+        SET status = 1, sent_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="incrementOutboxRetry">
+        UPDATE t_outbox_message
+        SET retry_count = retry_count + 1
+        WHERE id = #{id}
+    </update>
+
+</mapper>
