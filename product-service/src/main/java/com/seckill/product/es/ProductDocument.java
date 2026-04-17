@@ -12,16 +12,16 @@ import java.math.BigDecimal;
  * ES 商品文档（对应 Elasticsearch 索引 "products"）
  */
 @Data
-@Document(indexName = "products")
+@Document(indexName = "products", createIndex = false)
 public class ProductDocument {
 
     @Id
     private String id;
 
-    @Field(type = FieldType.Text, analyzer = "ik_max_word", searchAnalyzer = "ik_smart")
+    @Field(type = FieldType.Text)
     private String name;
 
-    @Field(type = FieldType.Text, analyzer = "ik_max_word", searchAnalyzer = "ik_smart")
+    @Field(type = FieldType.Text)
     private String description;
 
     @Field(type = FieldType.Scaled_Float, scalingFactor = 100)

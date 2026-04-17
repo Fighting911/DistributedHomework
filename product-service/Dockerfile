@@ -1,6 +1,5 @@
 FROM maven:3.9-amazoncorretto-17 AS builder
 WORKDIR /app
-COPY settings.xml /root/.m2/settings.xml
 COPY pom.xml .
 RUN mvn dependency:go-offline -q
 COPY src ./src

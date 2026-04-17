@@ -4,35 +4,17 @@ server:
 spring:
   application:
     name: product-service
-  # ShardingSphere 读写分离数据源
-  shardingsphere:
-    datasource:
-      names: master,slave
-      master:
-        type: com.zaxxer.hikari.HikariDataSource
-        driver-class-name: com.mysql.cj.jdbc.Driver
-        jdbc-url: ${SPRING_DATASOURCE_MASTER_URL:jdbc:mysql://localhost:3307/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8}
-        username: ${SPRING_DATASOURCE_USERNAME:root}
-        password: ${SPRING_DATASOURCE_PASSWORD:123456}
-      slave:
-        type: com.zaxxer.hikari.HikariDataSource
-        driver-class-name: com.mysql.cj.jdbc.Driver
-        jdbc-url: ${SPRING_DATASOURCE_SLAVE_URL:jdbc:mysql://localhost:3308/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8}
-        username: ${SPRING_DATASOURCE_USERNAME:root}
-        password: ${SPRING_DATASOURCE_PASSWORD:123456}
-    rules:
-      readwrite-splitting:
-        data-sources:
-          seckill_rw:
-            write-data-source-name: master
-            read-data-source-names:
-              - slave
-            load-balancer-name: round_robin
-        load-balancers:
-          round_robin:
-            type: ROUND_ROBIN
-    props:
-      sql-show: true
+  datasource:
+    master:
+      jdbc-url: ${SPRING_DATASOURCE_MASTER_URL:jdbc:mysql://localhost:3307/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8}
+      username: ${SPRING_DATASOURCE_USERNAME:root}
+      password: ${SPRING_DATASOURCE_PASSWORD:123456}
+      driver-class-name: com.mysql.cj.jdbc.Driver
+    slave:
+      jdbc-url: ${SPRING_DATASOURCE_SLAVE_URL:jdbc:mysql://localhost:3308/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8}
+      username: ${SPRING_DATASOURCE_USERNAME:root}
+      password: ${SPRING_DATASOURCE_PASSWORD:123456}
+      driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
@@ -59,4 +41,3 @@ instance:
 logging:
   level:
     com.seckill.product: debug
-    org.apache.shardingsphere: info

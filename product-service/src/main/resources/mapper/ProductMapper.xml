@@ -10,18 +10,18 @@
         <result property="price"       column="price"/>
         <result property="status"      column="status"/>
         <result property="createdAt"   column="created_at"/>
-        <result property="stock"       column="available"/>
+        <result property="stock"       column="stock"/>
     </resultMap>
 
     <select id="selectByIdWithStock" resultMap="productResultMap">
-        SELECT p.*, i.available
+        SELECT p.*, i.stock
         FROM t_product p
         LEFT JOIN t_inventory i ON i.product_id = p.id
         WHERE p.id = #{id} AND p.status = 1
     </select>
 
     <select id="selectAllWithStock" resultMap="productResultMap">
-        SELECT p.*, i.available
+        SELECT p.*, i.stock
         FROM t_product p
         LEFT JOIN t_inventory i ON i.product_id = p.id
         WHERE p.status = 1

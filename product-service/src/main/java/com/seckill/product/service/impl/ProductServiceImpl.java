@@ -1,6 +1,7 @@
 package com.seckill.product.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.seckill.product.config.ReadOnly;
 import com.seckill.product.entity.Product;
 import com.seckill.product.es.ProductDocument;
 import com.seckill.product.es.ProductEsRepository;
@@ -12,6 +13,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.IndexOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -52,6 +55,9 @@ public class ProductServiceImpl {
     @Autowired(required = false)
     private ProductEsRepository productEsRepository;
 
+    @Autowired(required = false)
+    private ElasticsearchOperations elasticsearchOperations;
+
     @Value("${cache.product.ttl:3600}")
     private long baseTtl;
 
@@ -68,8 +74,9 @@ public class ProductServiceImpl {
 
     // ─────────────────────────────────────────────────────────────
     // 查询商品详情（含三大缓存问题处理）
-    // ShardingSphere 自动将此 SELECT 路由到 slave
+    // @ReadOnly 将此方法路由到 slave 数据源
     // ─────────────────────────────────────────────────────────────
+    @ReadOnly
     public Product getProductById(Long id) throws Exception {
         String cacheKey = CACHE_PREFIX + id;
 
@@ -147,8 +154,9 @@ public class ProductServiceImpl {
     // ─────────────────────────────────────────────────────────────
     // 查询商品列表（走 slave）
     // ─────────────────────────────────────────────────────────────
+    @ReadOnly
     public List<Product> listProducts() {
-        log.info("[{}] List products from DB(slave via ShardingSphere)", instanceId);
+        log.info("[{}] List products from DB(slave via RoutingDataSource)", instanceId);
         return productMapper.selectAllWithStock();
     }
 
@@ -194,6 +202,14 @@ public class ProductServiceImpl {
     public void syncAllToEs() {
         if (productEsRepository == null) return;
         try {
+            // Create index if it doesn't exist (safe for multi-instance startup)
+            if (elasticsearchOperations != null) {
+                IndexOperations indexOps = elasticsearchOperations.indexOps(ProductDocument.class);
+                if (!indexOps.exists()) {
+                    indexOps.createWithMapping();
+                    log.info("Created ES index 'products'");
+                }
+            }
             List<Product> products = productMapper.selectAllWithStock();
             products.forEach(this::syncToEs);
             log.info("Full sync to ES done, {} products", products.size());

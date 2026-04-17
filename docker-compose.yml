@@ -180,7 +180,7 @@ services:
     container_name: product-service-1
     environment:
       SPRING_DATASOURCE_MASTER_URL: jdbc:mysql://mysql-master:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
-      SPRING_DATASOURCE_SLAVE_URL: jdbc:mysql://mysql-slave:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_SLAVE_URL: jdbc:mysql://mysql-slave:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: 123456
       SPRING_DATA_REDIS_HOST: redis
@@ -205,7 +205,7 @@ services:
     container_name: product-service-2
     environment:
       SPRING_DATASOURCE_MASTER_URL: jdbc:mysql://mysql-master:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
-      SPRING_DATASOURCE_SLAVE_URL: jdbc:mysql://mysql-slave:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_SLAVE_URL: jdbc:mysql://mysql-slave:3306/seckill?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: 123456
       SPRING_DATA_REDIS_HOST: redis
@@ -279,7 +279,7 @@ services:
       dockerfile: nginx/Dockerfile
     container_name: seckill-nginx
     ports:
-      - "80:80"
+      - "8080:80"
     depends_on:
       - user-service-1
       - user-service-2

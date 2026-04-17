@@ -1,17 +1,6 @@
 # 商品库存与秒杀系统
 
-
-## 项目简介
-
-基于微服务架构的商品库存与秒杀系统，覆盖分布式系统核心能力：
-
-- ✅ 服务拆分（用户、商品、库存、订单服务）
-- ✅ 高并发防超卖（Redis预减 + Redisson分布式锁 + 乐观锁三层）
-- ✅ 负载均衡（Nginx 轮询 / IP Hash / 最少连接）
-- ✅ 动静分离（Nginx 静态文件直出 vs 动态接口代理）
-- ✅ 分布式缓存（Redis 缓存穿透/击穿/雪崩处理）
-- ✅ JWT 认证（无状态 Token）
-- ✅ 容器化部署（Docker + Docker Compose）
+基于微服务架构的商品库存与秒杀系统，覆盖分布式系统三大核心作业：高并发读、高并发写、分布式事务。
 
 ## 系统架构
 
@@ -19,14 +8,17 @@
 Client
   │
   ▼
-Nginx (80)  ← 负载均衡 + 动静分离
-  ├── /static/*      → 直接返回静态文件
-  ├── /api/user/*    → user-service-1 / user-service-2（轮询）
-  ├── /api/product/* → product-service-1 / product-service-2（轮询）
-  └── /api/inventory/* → inventory-service（秒杀核心）
+Nginx (:8080)  ← 负载均衡 + 动静分离
+  ├── /static/*        → 静态文件直出
+  ├── /api/user/*      → user-service-1/2（轮询，8081/8082）
+  ├── /api/product/*   → product-service-1/2（轮询，8083/8086）
+  ├── /api/inventory/* → inventory-service（8084，秒杀核心）
+  └── /api/order/*     → order-service（8085，异步下单）
          │
-         ├── Redis 7.x（缓存 + 分布式锁）
-         └── MySQL 8.0（持久化）
+         ├── MySQL 8.0（主从复制，master:3307 / slave:3308）
+         ├── Redis 7.x（缓存 + 分布式锁 + 库存预减）
+         ├── Kafka（异步订单消息队列）
+         └── Elasticsearch 8.11（商品全文搜索）
 ```
 
 ## 技术栈
@@ -35,154 +27,124 @@ Nginx (80)  ← 负载均衡 + 动静分离
 |------|---------|
 | 后端框架 | Spring Boot 3.2 |
 | 持久层 | MyBatis |
-| 数据库 | MySQL 8.0 |
-| 缓存/限流 | Redis 7.x |
+| 数据库 | MySQL 8.0（主从复制） |
+| 缓存 | Redis 7.x |
 | 分布式锁 | Redisson 3.27 |
+| 消息队列 | Kafka (Confluent 7.4) |
+| 搜索引擎 | Elasticsearch 8.11 |
+| 读写分离 | AbstractRoutingDataSource + AOP |
+| 分表 | ShardingSphere-JDBC 5.4（order-service） |
 | 认证 | JWT (jjwt 0.12) |
 | 容器化 | Docker + Docker Compose |
 | 负载均衡 | Nginx 1.25 |
-| 构建工具 | Maven（多模块） |
+
+## 作业完成清单
+
+### 作业一：系统设计与基础实现
+
+- ✅ 微服务拆分（用户、商品、库存、订单四服务）
+- ✅ RESTful API 设计
+- ✅ MySQL 数据库设计（用户/商品/库存/订单/秒杀记录）
+- ✅ Spring Boot + MyBatis + MySQL 环境搭建
+- ✅ 用户注册/登录（JWT 认证，Token 存 Redis，TTL 2h）
+- ✅ Docker + Docker Compose 容器化部署
+- ✅ Nginx 负载均衡（轮询 / IP Hash / 最少连接）
+- ✅ 动静分离（静态文件直出，动态接口代理）
+
+### 作业二：高并发读
+
+- ✅ **MySQL 主从复制**（binlog ROW 格式，master→slave 实时同步）
+- ✅ **读写分离**（AbstractRoutingDataSource + @ReadOnly AOP，SELECT 路由从库）
+- ✅ **Elasticsearch 全文搜索**（商品名称/描述索引，启动时全量同步）
+- ✅ **Redis 分布式缓存**，三大问题处理：
+  - 缓存穿透：查询不存在商品缓存空值 `"NULL"`，TTL=60s
+  - 缓存击穿：Redis SETNX 互斥锁，只让一个线程查 DB
+  - 缓存雪崩：TTL = 基础值(3600s) + 随机偏移(0~600s)
+
+### 作业三：高并发写 + 分布式事务
+
+- ✅ **Kafka 异步下单**（秒杀请求发 Kafka，inventory-service 消费处理）
+- ✅ **三层防超卖**：
+  1. Redis DECR 原子预减库存（最快拦截）
+  2. Redisson 分布式锁（防并发重复下单）
+  3. MySQL 乐观锁（version 字段，最终一致性兜底）
+- ✅ **幂等性**（Redis 秒杀记录去重，同一用户同一商品只能成功一次）
+- ✅ **ShardingSphere 分表**（t_order 按 id%4 分为 t_order_0~3）
+- ✅ **Outbox Pattern 分布式事务**（本地消息表 t_outbox_message，保证库存扣减与订单创建最终一致）
 
 ## 快速启动
 
-### 前置条件
-- Docker + Docker Compose
-- Java 17+（本地开发）
-
-### 一键启动（推荐）
-
 ```bash
+# 一键构建并启动所有服务
 docker-compose up -d --build
-```
 
-启动后容器列表：
+# 查看服务状态
+docker-compose ps
 
-| 容器 | 宿主机端口 | 说明 |
-|------|-----------|------|
-| seckill-nginx | 80 | 统一入口 |
-| user-service-1 | 8081 | 用户服务实例1 |
-| user-service-2 | 8082 | 用户服务实例2 |
-| product-service-1 | 8083 | 商品服务实例1 |
-| product-service-2 | 8086 | 商品服务实例2 |
-| inventory-service | 8084 | 库存/秒杀服务 |
-| seckill-mysql | 3307 | MySQL（宿主机3307避免冲突）|
-| seckill-redis | 6379 | Redis |
-
-### 停止服务
-
-```bash
+# 停止所有服务
 docker-compose down
 ```
 
-## 接口文档
+启动后端口汇总：
 
-所有请求通过 Nginx（端口80）统一入口。
+| 服务 | 宿主机端口 |
+|------|-----------|
+| Nginx（统一入口） | **8080** |
+| user-service-1/2 | 8081 / 8082 |
+| product-service-1/2 | 8083 / 8086 |
+| inventory-service | 8084 |
+| order-service | 8085 |
+| MySQL master | 3307 |
+| MySQL slave | 3308 |
+| Redis | 6379 |
+| Kafka | 9092 |
+| Elasticsearch | 9200 |
 
-### 用户服务
+> 注意：Nginx 使用 8080 端口（80 端口可能被其他服务占用）
+
+## 接口示例
+
+所有请求通过 Nginx（端口 8080）统一入口。
 
 ```bash
 # 注册
-curl -X POST http://localhost/api/user/register \
+curl -X POST http://localhost:8080/api/user/register \
   -H "Content-Type: application/json" \
-  -d '{"username":"max","password":"123456","email":"max@test.com"}'
+  -d '{"username":"test","password":"123456","email":"test@test.com"}'
 
 # 登录（返回 JWT Token）
-curl -X POST http://localhost/api/user/login \
+curl -X POST http://localhost:8080/api/user/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"max","password":"123456"}'
+  -d '{"username":"test","password":"123456"}'
 
-# 查询用户信息
-curl http://localhost/api/user/info/1
+# 商品列表（读从库）
+curl http://localhost:8080/api/product/list
 
-# 负载均衡验证
-curl http://localhost/api/user/ping
-```
+# 商品详情（Redis 缓存，fromCache=true 表示命中缓存）
+curl http://localhost:8080/api/product/1
 
-### 商品服务
+# ES 全文搜索
+curl "http://localhost:8080/api/product/search?keyword=iPhone"
 
-```bash
-# 商品详情（Redis缓存，返回 fromCache 字段）
-curl http://localhost/api/product/1
-
-# 商品列表
-curl http://localhost/api/product/list
-
-# 负载均衡验证
-curl http://localhost/api/product/ping
-```
-
-### 库存/秒杀服务
-
-```bash
-# 查询库存
-curl http://localhost/api/inventory/1
-
-# 秒杀（三层防超卖）
-curl -X POST "http://localhost/api/inventory/seckill?productId=1&userId=1"
-
-# 回滚库存
-curl -X POST "http://localhost/api/inventory/rollback?productId=1&quantity=1"
+# 秒杀下单（需要 JWT Token）
+curl -X POST http://localhost:8080/api/inventory/seckill \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"productId":1,"userId":1}'
 ```
 
 ## 目录结构
 
 ```
 DistributedHomework/
-├── pom.xml                    # 父 POM（Maven 多模块）
-├── docker-compose.yml         # 全服务编排
-├── nginx/
-│   ├── Dockerfile
-│   └── nginx.conf             # 负载均衡 + 动静分离
-├── frontend/                  # 静态资源（动静分离）
-│   ├── index.html
-│   ├── css/style.css
-│   └── js/app.js
-├── user-service/              # 用户服务（JWT认证）
-├── product-service/           # 商品服务（Redis缓存）
-├── inventory-service/         # 库存服务（Redisson秒杀）
-└── docs/
-    ├── architecture.md        # 架构设计
-    ├── er-diagram.md          # ER图
-    ├── tech-stack.md          # 技术选型
-    ├── cache-design.md        # 缓存三大问题
-    ├── jmeter-guide.md        # 压测指南
-    └── api/user-api.md        # 接口文档
+├── docker-compose.yml
+├── nginx/                  # 负载均衡 + 动静分离
+├── frontend/               # 静态页面
+├── mysql/
+│   ├── master/my.cnf       # 主库配置（binlog ROW）
+│   └── slave/              # 从库配置 + 初始化脚本
+├── user-service/           # 用户服务（JWT 认证）
+├── product-service/        # 商品服务（读写分离 + Redis 缓存 + ES）
+├── inventory-service/      # 库存服务（Redisson 秒杀 + Outbox）
+└── order-service/          # 订单服务（Kafka 消费 + ShardingSphere 分表）
 ```
-
-## 作业完成清单
-
-### 作业一：商品库存与秒杀系统设计
-
-- ✅ 系统架构图（服务拆分）
-- ✅ RESTful API 接口定义
-- ✅ 数据库 ER 图（用户/商品/库存/订单四表）
-- ✅ 技术栈选型说明
-- ✅ Git 仓库初始化
-- ✅ Spring Boot + MyBatis + MySQL 环境搭建
-- ✅ 用户注册/登录功能（JWT认证）
-
-### 作业二：高并发读
-
-- ✅ Dockerfile + Docker Compose 容器化部署
-- ✅ Nginx 负载均衡（轮询/IP Hash/最少连接三种算法）
-- ✅ 动静分离（静态文件直出，动态接口代理）
-- ✅ Redis 商品详情缓存
-- ✅ 缓存穿透处理（空值缓存）
-- ✅ 缓存击穿处理（Redisson 分布式锁）
-- ✅ 缓存雪崩处理（TTL 随机偏移）
-- ⏳ JMeter 压力测试（参见 docs/jmeter-guide.md）
-
-### 进行中
-
-- ⏳ RabbitMQ 异步创建订单
-- ⏳ order-service 订单服务
-
-## 常见问题
-
-**端口冲突**：MySQL 默认映射到宿主机 3307，如有冲突修改 `docker-compose.yml`
-
-**JWT Token 无效**：检查 `jwt.secret` 长度是否 >= 64 字节
-
-**Redis 连接失败**：确认 `seckill-redis` 容器已启动：`docker ps | grep redis`
-
-**查看实时日志**：`docker-compose logs -f user-service-1`
